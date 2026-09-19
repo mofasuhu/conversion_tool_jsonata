@@ -1,119 +1,86 @@
-# JSON Question Conversion Tool (JSONata)
+# JSON Question Conversion Tool
 
-Automated tool to convert educational question JSON files from a legacy structure to a new standardized structure, with comprehensive validation and error reporting.
+A Python batch pipeline for converting legacy educational-question JSON into a standardized question structure. Each file is pre-validated, transformed with type-specific JSONata rules, and post-validated before it is written to an output area.
 
-## Features
-- Converts 12 question types: MCQ, MRQ, GMRQ, FRQ, Ordering, Gap-Text, String, Opinion, Matching, Counting, Puzzle, Input-Box
-- Three-stage pipeline: Pre-validation → Conversion → Post-validation
-- Uses JSONata transformation rules for type-specific conversions
-- Batch processing with progress tracking and error recovery
-- Generates detailed error reports with separate warnings tracking (Excel + text logs)
-- BeautifulSoup-based HTML validation for answer explanations
-- Part-specific explanation extraction for multipart questions
+## What it does
 
-## Pipeline
-1. Pre-conversion validation (checks OLD structure)
-2. Conversion (JSONata rules per type)
-3. Post-conversion validation (ensures NEW structure)
+- Discovers JSON files recursively from an input file or directory.
+- Supports the question types listed in `SCRIPTS/config.py`, including MCQ, MRQ, GMRQ, FRQ, ordering, gap text, string, opinion, matching, counting, puzzle, and input-box variants.
+- Runs pre-conversion validation, JSONata conversion, and post-conversion validation.
+- Records blocking errors separately from non-blocking warnings.
+- Writes converted files, failed inputs, post-validation outputs, Excel reports, and text logs to separate output directories.
+- Can filter by question type, run in dry-run mode, and use multiple worker processes.
 
-## Outputs
-- `OUTPUTS/CONVERTED/` — Successfully converted files
-- `OUTPUTS/PRE_CONVERSION_VALIDATION_FAILED/` — Invalid input structure (blocking errors only)
-- `OUTPUTS/CONVERSION_FAILED/` — Transformation errors
-- `OUTPUTS/POST_CONVERSION_VALIDATION_FAILED/` — Invalid output structure
-- `OUTPUTS/LOGS_REPORTS/` — Error reports (.xlsx with Errors + Warnings sheets, .log)
+## Repository layout
 
-## Requirements
-Install dependencies:
+- `main.py` — command-line entry point for the general conversion pipeline.
+- `workflow_main.py` — Step4-to-Step5 workflow for datasets arranged in the pipeline folder format.
+- `SCRIPTS/` — validators, converters, configuration, utilities, and type handling.
+- `JSONATA_RULES/` — one JSONata transformation rule file per supported question type.
+- `SIDE_TOOLS/` — supporting cleanup tools used by the workflow mode.
+- `requirements.txt` — Python dependencies.
+- `*_validations.txt`, `SUMMARY.txt`, and `Usage.txt` — validation and structure notes.
+
+## Installation
+
+Use Python 3.9 or newer, create an isolated environment, and install the dependencies:
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
-Requires: `jsonata-python`, `tqdm`, `openpyxl`, `beautifulsoup4`.
 
-## Quick Start
-Process all files in `INPUT/` with progress:
+The runtime dependencies are `jsonata-python`, `tqdm`, `openpyxl`, `pandas`, and `beautifulsoup4` (plus the packages pinned in `requirements.txt`).
+
+## General conversion
+
+By default, the command reads `INPUT/` and writes under `OUTPUTS/`:
 
 ```bash
 python3 -B main.py
 ```
 
-Verbose mode:
+Useful options:
 
 ```bash
-python3 -B main.py -v
-```
-
-Specify paths:
-
-```bash
-python3 -B main.py --input path/to/files --output path/to/output
-```
-
-Filter by types:
-
-```bash
+python3 -B main.py --input path/to/input --output path/to/output
 python3 -B main.py --types mcq,mrq,counting
-```
-
-Dry-run (validation only):
-
-```bash
 python3 -B main.py --dry-run
+python3 -B main.py --verbose --workers 8
 ```
 
-## Workflow Mode (Step4_OUTPUT → Step5_OUTPUT)
-Use `workflow_main.py` when your dataset is already in the Step4 pipeline folder structure:
+The output root contains:
 
-- Target JSON edited in place: `Step4_OUTPUT/<QuestionId>/Updated/<QuestionId>.json`
-- Input sheet: `Step4_OUTPUT/questions_updated_sheet.csv`
+- `CONVERTED/` — successfully converted files.
+- `PRE_CONVERSION_VALIDATION_FAILED/` — inputs rejected before transformation.
+- `CONVERSION_FAILED/` — files that raised conversion errors.
+- `POST_CONVERSION_VALIDATION_FAILED/` — transformed files that did not satisfy the new structure.
+- `LOGS_REPORTS/` — Excel error/warning reports and text logs.
 
-What it does:
-- Empties `Step5_OUTPUT`
-- Copies all contents from `Step4_OUTPUT` → `Step5_OUTPUT` (**excluding `*.log` files**)
-- Rewrites `Step5_OUTPUT/questions_updated_sheet.csv` to **one row per `QuestionId`** keeping only:
-  `QuestionId, SectionCode, language_iso_code, subject_id, subject_name, grade_id, grade_url_text, country_iso_code, parent_id, clone_parent_id, IsSuccess`
-  and adds workflow output columns:
-  `Error Message, Error Type, Warning Message, tex_cleaning`
-- Cleans tex files (if `tex/<question_id>.figures/` exists):
-  * Matches `<12-digit ID>.1.<index>.tex` → renames to `<question_id>.<indexmodified>.tex` (zero-padded)
-  * Matches `<12-digit ID>.1.tex` → renames to `<question_id>.01.tex`
-  * Copies renamed files to `Updated/` folder and removes `tex/` folder
-- Runs HTML cleaning (`SIDE_TOOLS/jsons_htmltags_cleaning/clean_json_html.py`) **before** conversion for each processed question
-- Converts JSONs **in place** inside `Step5_OUTPUT/<QuestionId>/Updated/<QuestionId>.json`
-- Writes a Step5 log file in `Step5_OUTPUT`:
-  `Step5_JsonCleaningAndConversion_<YYYYMMDD>_<HHMMSSmmm>.log`
+`--dry-run` validates and processes without writing output files. The default worker count is 50; choose a smaller value for constrained machines.
 
-Important:
-- **IsSuccess gating**: Only rows where `IsSuccess=True` (from the input Step4 sheet) are processed in Step5.
-  Rows with `IsSuccess=False` are skipped and their JSONs remain unchanged in `Step5_OUTPUT`.
-- Paths are intentionally kept **relative** by default; run from the repo root or pass explicit paths.
+## Step4-to-Step5 workflow
 
-Examples:
+Use `workflow_main.py` when the input is a Step4 pipeline directory. It copies the Step4 tree to Step5, keeps the relevant rows from `questions_updated_sheet.csv`, cleans HTML in JSON fields, normalizes supported TeX figure names, and converts eligible JSON files in place.
 
 ```bash
 python3 -B workflow_main.py
-python3 -B workflow_main.py --inputstep Step4_OUTPUT --outputstep Step5_OUTPUT
 python3 -B workflow_main.py --inputstep path/to/Step4_OUTPUT --outputstep path/to/Step5_OUTPUT -v
 ```
 
-## Supported Question Types
-`mcq`, `mrq`, `gmrq`, `frq`, `frq_ai`, `oq`, `gapText`, `string`, `opinion`, `matching`, `counting`, `puzzle`, `input_box`
+Only rows marked `IsSuccess=True` are processed. The workflow keeps paths relative by default, excludes log files while copying, and writes a timestamped Step5 log.
 
-## Validation System
-- **ERRORS**: Block conversion, file segregated to failure folder
-- **WARNINGS**: Non-blocking issues, conversion proceeds normally
-  - Tracked in separate Excel "Warnings" sheet
-  - Examples: multipart without statement, single-part answer HTML structure issues, EG MCQ/MRQ with > 4 choices
-- **AUTOMATIC FIXES**: Some warnings trigger automatic fixes during conversion
-  - EG MCQ/MRQ with > 4 choices: extra distractors automatically removed, choices renumbered
+## Validation and rules
 
-## Conversion Rules
-Type-specific JSONata rules live in `JSONATA_RULES/` (one `.jsonata` file per question type).
+Validation distinguishes errors that block conversion from warnings that allow it to continue. Some warnings have automatic fixes in the converter (for example, trimming excess distractors for supported question types). Review the generated reports before publishing converted content.
 
-## Documentation
-- See `SUMMARY.txt` for executive summary
-- See `Usage.txt` for detailed usage instructions
-- See `pre-conversion-validations.txt` for input validation rules
-- See `post-conversion-validations.txt` for output validation rules
-- See individual type structure files (e.g., `mcq.txt`, `mrq.txt`) for detailed JSON structure documentation
+Transformation behavior is defined by the `.jsonata` files in `JSONATA_RULES/`; validators and the Python orchestration code provide the surrounding checks and file handling.
+
+## Data and security
+
+Input, output, Step4/Step5 working directories, virtual environments, editor settings, and local environment files are ignored by `.gitignore`. Do not commit real student, employee, customer, or other private JSON/CSV data. Keep any credentials or service configuration outside the repository.
+
+## License
+
+See `LICENSE`.
