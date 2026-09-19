@@ -9,7 +9,7 @@ __pycache__/
 .installed.cfg
 *.egg
 
-# Virtual Environments
+# Virtual environments
 venv/
 env/
 ENV/
@@ -17,7 +17,7 @@ env.bak/
 venv.bak/
 .venv/
 
-
+# Local data and generated output
 INPUT/
 OUTPUTS/
 Step4_OUTPUT/
@@ -28,6 +28,14 @@ inputs/
 outputs/
 input/
 output/
+
+# Credentials and local configuration
+.env
+.env.*
+*.pem
+*.key
+*credentials*
+*secrets*
 
 # PyCharm
 .idea/
@@ -45,7 +53,7 @@ output/
 *.antigravity-workspace
 
 # Jupyter Notebook
-.ipynb_checkpoints
+.ipynb_checkpoints/
 
 # macOS
 .DS_Store
